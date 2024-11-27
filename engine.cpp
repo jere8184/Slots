@@ -25,7 +25,7 @@ struct Square
 struct Reel
 {
     std::vector<int> values;
-    int start = 0;
+    int offset = 0;
 
     virtual void spin(int amount) = 0; // positive for forward //negative for backward
 
@@ -41,13 +41,13 @@ struct FairStandardReel : Reel
 {
     void spin(int amount) // positive for forward //negative for backward
     {
-        start = amount % values.size();
+        offset = amount % values.size();
     }
 
     std::vector<int> get_current()
     {
-        std::vector<int> ret(values.begin() + start, values.end());
-        ret.append_range(std::vector<int>(values.begin(), values.begin() + start));
+        std::vector<int> ret(values.begin() + offset, values.end());
+        ret.append_range(std::vector<int>(values.begin(), values.begin() + offset));
         return ret;
     }
 
@@ -269,26 +269,58 @@ public:
 };
 
 
-class Renderer
+class FrontEnd
 {
 
 private:
     const float m_reel_width = 100;
     const float m_symbol_height = 100;
+    const float m_grid_bottom_boundary = 600;
+    const float m_grid_top_boundary = 100;
+    sf::RectangleShape m_top_border  = sf::RectangleShape({800, 100});
+    sf::RectangleShape m_bottom_border  = sf::RectangleShape({800, 100});
+
+    struct FrontEndReel
+    {
+        Reel& m_reel;
+        bool m_can_spin = true;
+        std::vector<sf::Sprite> m_sprites;
+
+        FrontEndReel(Reel& reel, std::vector<sf::Sprite> sprites): m_reel(reel), m_sprites(sprites) {};
+
+        void stop()
+        {
+            std::cout << (int)m_sprites.front().getPosition().y <<": " << (m_reel.offset * 100) + 100<< std::endl;
+            if((int)m_sprites.front().getPosition().y == (m_reel.offset * 100) + 100)
+            {
+                m_can_spin = false;
+            }
+        }
+    };
 
 public:
-    std::vector<sf::Texture*> m_symbol_textures;
+    std::vector<sf::Texture> m_symbol_textures;
+
+    std::vector<FrontEndReel> m_reels;
+
+
     sf::RenderWindow* m_window;
 
-    Renderer(sf::RenderWindow* w): m_window(w){};
+    FrontEnd(sf::RenderWindow* w): m_window(w)
+    {
+        this->m_top_border.setPosition(0, 0);
+        this->m_top_border.setFillColor({173,255,47});
+        this->m_bottom_border.setPosition(0, m_window->getSize().y - 100);
+        this->m_bottom_border.setFillColor({173,255,47});
+    };
     
-    void add_symbol(int symbol_val, std::string file_name)
+    void add_symbol(std::string file_name)
     {
         std::filesystem::path p("resources/symbols/");
         p.append(file_name);
-        sf::Texture* t = new sf::Texture;
+        sf::Texture t;
         
-        if(!t->loadFromFile(file_name))
+        if(!t.loadFromFile(file_name))
         {
             std::cout << "failed to load: "<< p.string() << std::endl;
             return;
@@ -301,16 +333,57 @@ public:
     }
     
     
-    void render_reel(Reel* reel, int position)
+    void add_reel(Reel* reel)
     {
         int i = 0;
+        std::vector<sf::Sprite> sprites;
         for(int symbol : reel->values)
         {
-                sf::Texture* t = m_symbol_textures[symbol];
-                sf::Sprite sprite(*t);
-                sprite.setPosition({position * m_reel_width, i++ * m_symbol_height});
-                m_window->draw(sprite);
+            sf::Sprite sprite(m_symbol_textures[symbol]);
+            sprite.setPosition({(m_reels.size() * m_reel_width) + 150, m_symbol_height * i++});
+            sprites.push_back(sprite);
         }
+        m_reels.push_back(FrontEndReel(*reel, sprites));
+    }
+
+    void render_reel(int reel_index)
+    {
+        int i = 0;
+        for(auto& sprite : m_reels[reel_index].m_sprites)
+        {
+            m_window->draw(sprite);
+        }
+    }
+
+    void spin_reel(std::vector<sf::Sprite>& reel_sprites ,float amount)
+    {
+        for(sf::Sprite& sprite : reel_sprites)
+        {
+            if(sprite.getPosition().y > reel_sprites.size() * 100)
+            {
+                sprite.setPosition(sprite.getPosition().x, 0);
+            }
+            sprite.move({0,amount});
+        }
+    }
+
+
+    void spin(float amount)
+    {
+        for(auto& reel : this->m_reels)
+        {
+            if(reel.m_can_spin)
+            {                
+                reel.stop();
+                spin_reel(reel.m_sprites, amount);
+            }
+        }
+    }
+
+    void render_boardrs()
+    {
+        this->m_window->draw(this->m_top_border);
+        this->m_window->draw(this->m_bottom_border);
     }
 };
 
@@ -320,23 +393,47 @@ public:
 int main()
 {
     sf::RenderWindow window(sf::VideoMode(800, 600), "SFML window");
-    Renderer r(&window);
-    r.add_symbol(1,"symbol_7.png");
-    r.add_symbol(2,"symbol_bell.png");
-    r.add_symbol(3,"symbol_melon.png");
+    FrontEnd r(&window);
+    r.add_symbol("symbol_7.png");
+    r.add_symbol("symbol_bell.png");
+    r.add_symbol("symbol_melon.png");
+    r.add_symbol("symbol_cherry.png");
+
 
     SlotMachine sm;
-    FairStandardReel reel_1(std::vector<int>({2, 2, 2, 2, 2}));
-    FairStandardReel reel_2(std::vector<int>({1, 2, 3, 4, 5}));
-    FairStandardReel reel_3(std::vector<int>({1, 2, 3, 4, 5}));
-    FairStandardReel reel_4(std::vector<int>({1, 2, 3, 4, 5}));
-    FairStandardReel reel_5(std::vector<int>({1, 2, 3, 4, 5}));
+    FairStandardReel reel_1(std::vector<int>({0, 1, 2, 3, 3, 3, 3}));
+    FairStandardReel reel_2(std::vector<int>({1, 2, 3, 0, 1, 2, 1}));
+    FairStandardReel reel_3(std::vector<int>({3, 2, 0, 1, 3, 1, 1}));
+    FairStandardReel reel_4(std::vector<int>({2, 0, 3, 0, 0, 0, 1}));
+    FairStandardReel reel_5(std::vector<int>({1, 2, 0, 1, 0, 2, 1}));
 
+
+    r.add_reel(&reel_1);
+    r.add_reel(&reel_2);
+    r.add_reel(&reel_3);
+    r.add_reel(&reel_4);
+    r.add_reel(&reel_5);
+
+    reel_1.spin(rand());
+    reel_2.spin(rand());
+    reel_3.spin(rand());
+    reel_4.spin(rand());
+    reel_5.spin(rand());
+
+    reel_1.offset;
 
     while (true)
     {
-        r.render_reel(&reel_1, 0);
+        r.render_reel(0);
+        r.render_reel(1);
+        r.render_reel(2);
+        r.render_reel(3);
+        r.render_reel(4);
+        r.spin(1);
+
+        r.render_boardrs();
         window.display();
+        window.clear({240,230,140});
     }
 
     sm.add_reel(&reel_1);
