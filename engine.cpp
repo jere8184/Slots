@@ -277,28 +277,27 @@ private:
     const float m_symbol_height = 100;
 
 public:
-    std::unordered_map<int, sf::Sprite*> m_symbol_sprites;
-    sf::RenderWindow* window;
+    std::vector<sf::Texture*> m_symbol_textures;
+    sf::RenderWindow* m_window;
 
-    Renderer(sf::RenderWindow* w): window(w){};
+    Renderer(sf::RenderWindow* w): m_window(w){};
     
     void add_symbol(int symbol_val, std::string file_name)
     {
         std::filesystem::path p("resources/symbols/");
         p.append(file_name);
-        sf::Texture t;
+        sf::Texture* t = new sf::Texture;
         
-        if(!t.loadFromFile(file_name))
+        if(!t->loadFromFile(file_name))
         {
             std::cout << "failed to load: "<< p.string() << std::endl;
             return;
         }
+        m_symbol_textures.push_back(t);
 
-        sf::Sprite* s = new sf::Sprite(t);
         //s->setOrigin(sf::Vector2f(t.getSize()) / 2.f);
         //s->setPosition(s->getOrigin());
 
-        m_symbol_sprites[symbol_val] = s;
     }
     
     
@@ -307,13 +306,10 @@ public:
         int i = 0;
         for(int symbol : reel->values)
         {
-            if(m_symbol_sprites.contains(symbol))
-            {
-                sf::Sprite* sprite = m_symbol_sprites[symbol];
-                sprite->setPosition({300, 300});
-                window->draw(*sprite);
-                break;
-            }
+                sf::Texture* t = m_symbol_textures[symbol];
+                sf::Sprite sprite(*t);
+                sprite.setPosition({position * m_reel_width, i++ * m_symbol_height});
+                m_window->draw(sprite);
         }
     }
 };
