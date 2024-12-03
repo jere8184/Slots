@@ -1,1 +1,3 @@
 A scrapy slot machine program I quickly wrote for an interview. Work in progress......
+
+SFML C++23
